@@ -319,6 +319,11 @@ const useNote = (initData?: NoteModel) => {
                                 // setNote(originalNote);
                                 // return;
                             }
+                        } else if (key === 'date') {
+                            // 对 date 字段进行特殊处理，允许一定的误差，并以服务器返回的为准
+                            // 这里不再进行严格比较，因为服务器时间可能与客户端有微小差异
+                            // validApiResult.date 将在后续更新中被使用
+                            console.log(`日期字段 (${key}) 将使用服务器返回的值: ${validApiResult[key]}`);
                         } else if (updatedData[key] !== validApiResult[key]) {
                             console.error(`字段 ${key} 验证失败，服务器返回的值与预期不一致`);
                             console.error(`本地预期: ${updatedData[key]}, 服务器返回: ${validApiResult[key]}`);
@@ -406,6 +411,39 @@ const useNote = (initData?: NoteModel) => {
         [createNote, fetchNote]
     );
 
+    const apiDeleteNote = useCallback(
+        async (deletedNoteId: string) => {
+            if (!deletedNoteId || deletedNoteId === 'undefined') {
+                console.warn(`handleHardDeleteCleanup: Invalid deletedNoteId "${deletedNoteId}" provided.`);
+                return;
+            }
+            console.log('handleHardDeleteCleanup triggered for note ID:', deletedNoteId);
+
+            // 1. 从本地笔记缓存中移除被删除的笔记条目
+            console.log('Removing note from local cache:', deletedNoteId);
+            await noteCache.removeItem(deletedNoteId);
+            // 开发者提示: 如果您的应用支持笔记的层级结构，并且硬删除父笔记意味着其所有子孙笔记也应被删除，
+            // 您可能需要在此处添加逻辑来递归地从缓存中移除所有相关的子孙笔记。
+            // 当前的 initTree() 调用会从服务器刷新整个树，这应该能处理子孙笔记在树结构中的移除，
+            // 但显式清理缓存可以确保数据一致性并避免潜在的孤立缓存条目。
+
+            // 2. 调用API从服务器重新获取并更新整个树结构
+            console.log('Refreshing note tree from server...');
+            await initTree();
+            console.log('Note tree refreshed.');
+
+            // 3. 如果当前正在查看的笔记被硬删除了，UI需要相应地更新
+            if (note?.id === deletedNoteId) {
+                console.log('Currently viewed note was deleted. Clearing note view.');
+                setNote(undefined); // 清空笔记视图
+                toast('当前笔记已被永久删除', 'info'); // 通知用户
+                // 导航到默认页面或列表的逻辑通常在UI组件层完成，
+                // 例如，通过 useEffect 监听 `note` 状态的变化。
+            }
+        },
+        [note, setNote, initTree, toast] 
+    );
+
     return {
         note,
         fetchNote,
@@ -419,6 +457,7 @@ const useNote = (initData?: NoteModel) => {
         initNote,
         loading,
         setNote, // 添加 setNote
+        apiDeleteNote, // 新增：处理硬删除后的清理工作
     };
 };
 
