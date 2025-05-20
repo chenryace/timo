@@ -5,7 +5,6 @@ import { useStore } from 'libs/server/middlewares/store';
 import { getPathNoteById } from 'libs/server/note-path';
 import { NOTE_DELETED } from 'libs/shared/meta';
 import { ROOT_ID } from 'libs/shared/tree';
-import TreeActions from 'libs/shared/tree'; // Added import
 
 export default api()
     .use(useAuth)
@@ -37,21 +36,8 @@ export default api()
 
 async function deleteNote(req: ApiRequest, id: string) {
     const notePath = getPathNoteById(id);
-    const tree = await req.state.treeStore.get();
 
-    // Get all descendant notes
-    const descendants = TreeActions.flattenTree(tree, id);
-    const descendantIds = descendants.map(item => item.id);
-
-    // Delete all descendant notes from store
-    for (const descendantId of descendantIds) {
-        const descendantNotePath = getPathNoteById(descendantId);
-        await req.state.store.deleteObject(descendantNotePath);
-    }
-
-    // Delete the main note
     await req.state.store.deleteObject(notePath);
-    // This will also remove all descendants from the tree structure
     await req.state.treeStore.deleteItem(id);
 }
 

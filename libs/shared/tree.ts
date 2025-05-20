@@ -91,29 +91,11 @@ function restoreItem(tree: TreeModel, id: string, pid = ROOT_ID) {
     return tree;
 }
 
-function deleteItem(tree: TreeModel, id: string): TreeModel {
-    let newTree = cloneDeep(tree);
+function deleteItem(tree: TreeModel, id: string) {
+    tree = cloneDeep(tree);
+    delete tree.items[id];
 
-    // 1. 获取所有要删除的节点 ID（包括自身和所有子孙节点）
-    // flattenTree(tree, rootId) 返回 rootId 下的所有子孙节点，不包括 rootId 本身
-    const childrenAndGrandchildren = flattenTree(newTree, id);
-    const allIdsToDelete = [id, ...childrenAndGrandchildren.map(item => item.id)];
-
-    // 2. 从父节点的 children 数组中移除原始 id
-    // 遍历所有 item，找到包含要删除 id 的父节点
-    forEach(newTree.items, (item) => {
-        if (item.children.includes(id)) {
-            pull(item.children, id);
-            // 通常一个节点只有一个父节点，但以防万一，不立即返回
-        }
-    });
-
-    // 3. 从 items 中删除所有收集到的 ID (自身和所有子孙)
-    allIdsToDelete.forEach(itemId => {
-        delete newTree.items[itemId];
-    });
-
-    return newTree;
+    return tree;
 }
 
 const flattenTree = (

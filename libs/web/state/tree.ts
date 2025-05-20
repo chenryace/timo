@@ -49,136 +49,41 @@ const useNoteTree = (initData: TreeModel = DEFAULT_TREE) => {
     }, [tree]);
 
     const fetchNotes = useCallback(
-        async (inputTree: TreeModel): Promise<TreeModel> => {
-            const noteDataMap: Record<string, NoteModel | undefined> = {};
-            const itemIds = Object.keys(inputTree.items);
-
+        async (tree: TreeModel) => {
             await Promise.all(
-                itemIds.map(async (id) => {
-                    if (id === ROOT_ID && !inputTree.items[ROOT_ID]?.data) {
-                        return; // ROOT_ID might not have/need data
-                    }
-                    try {
-                        const note = await fetchNote(id);
-                        if (note) {
-                            noteDataMap[id] = note;
-                        } else {
-                            console.warn(`[fetchNotes] Note data for ID ${id} not found or fetch failed. This item will be excluded from the hydrated tree.`);
-                        }
-                    } catch (error) {
-                        console.error(`[fetchNotes] Error fetching note for ID ${id}:`, error);
-                    }
+                map(tree.items, async (item) => {
+                    item.data = await fetchNote(item.id);
                 })
             );
 
-            const newValidItems: Record<string, TreeItemModel> = {};
-            for (const itemId of itemIds) {
-                const originalItem = inputTree.items[itemId];
-                const fetchedData = noteDataMap[itemId];
-
-                if (fetchedData) {
-                    newValidItems[itemId] = {
-                        ...originalItem,
-                        data: fetchedData,
-                    };
-                } else if (itemId === ROOT_ID) { // Always include ROOT_ID
-                    newValidItems[itemId] = {
-                        ...originalItem,
-                        data: undefined, // Explicitly set if no data was fetched/expected
-                    };
-                }
-            }
-
-            for (const itemId in newValidItems) {
-                const item = newValidItems[itemId];
-                if (item.children && Array.isArray(item.children)) {
-                    item.children = item.children.filter(childId => newValidItems[childId] !== undefined);
-                }
-            }
-
-            return {
-                ...inputTree,
-                items: newValidItems,
-            };
+            return tree;
         },
         [fetchNote]
     );
 
     const initTree = useCallback(async () => {
-        setInitLoaded(false);
-        let treeToSet: TreeModel | null = null;
-
-        const cachedTreeStructure = await uiCache.getItem<TreeModel>(TREE_CACHE_KEY);
-        if (cachedTreeStructure) {
-            console.log("[initTree] Cache hit. Cleaning and hydrating cached tree structure with notes...");
-            try {
-                const cleanedCachedTree = TreeActions.cleanTreeModel(cachedTreeStructure);
-                if (!cleanedCachedTree.items[ROOT_ID]) {
-                    console.warn("[initTree] Cached tree structure invalid after cleaning (ROOT_ID missing). Removing cache.");
-                    await uiCache.removeItem(TREE_CACHE_KEY);
-                } else {
-                    const hydratedCache = await fetchNotes(cleanedCachedTree);
-                    if (hydratedCache && hydratedCache.items[ROOT_ID]) {
-                        treeToSet = hydratedCache;
-                        console.log("[initTree] Successfully hydrated tree from cache.");
-                    } else {
-                        console.warn("[initTree] Cached tree structure became invalid after hydration. Will fetch from server.");
-                        await uiCache.removeItem(TREE_CACHE_KEY);
-                    }
-                }
-            } catch (error) {
-                console.error("[initTree] Error cleaning or hydrating cached tree:", error);
-                await uiCache.removeItem(TREE_CACHE_KEY); // Remove potentially corrupted cache
-            }
-        } else {
-            console.log("[initTree] Cache miss.");
+        const cache = await uiCache.getItem<TreeModel>(TREE_CACHE_KEY);
+        if (cache) {
+            const treeWithNotes = await fetchNotes(cache);
+            setTree(treeWithNotes);
         }
 
-        if (!treeToSet) {
-            console.log("[initTree] Fetching tree structure from server...");
-            const serverTreeStructure = await fetchTree();
+        const tree = await fetchTree();
 
-            if (serverTreeStructure) {
-                console.log("[initTree] Server tree structure fetched. Cleaning and hydrating with notes...");
-                try {
-                    const cleanedServerTree = TreeActions.cleanTreeModel(serverTreeStructure);
-                    if (!cleanedServerTree.items[ROOT_ID]) {
-                        console.error("[initTree] Server tree structure invalid after cleaning (ROOT_ID missing).");
-                        toast('Failed to load tree: Invalid structure from server.', 'error');
-                    } else {
-                        const hydratedServerTree = await fetchNotes(cleanedServerTree);
-                        if (hydratedServerTree && hydratedServerTree.items[ROOT_ID]) {
-                            treeToSet = hydratedServerTree;
-                            console.log("[initTree] Successfully hydrated tree from server.");
-                            // Save the cleaned structure, not the raw one, if it was successfully hydrated
-                            await uiCache.setItem(TREE_CACHE_KEY, cleanedServerTree);
-                        } else {
-                            console.error("[initTree] Server tree structure became invalid after hydration.");
-                            toast('Failed to initialize tree: server data inconsistency.', 'error');
-                        }
-                    }
-                } catch (error) {
-                    console.error("[initTree] Error cleaning or hydrating server tree:", error);
-                    toast('Failed to load notes for the tree.', 'error');
-                }
-            } else {
-                console.error("[initTree] Failed to fetch valid tree structure from server or ROOT_ID missing.");
-                if (serverTreeStructure) {
-                     toast('Failed to load tree: Invalid structure from server.', 'error');
-                } else {
-                     toast('Failed to load tree: Could not connect to server.', 'error');
-                }
-            }
+        if (!tree) {
+            toast('Failed to load tree', 'error');
+            return;
         }
 
-        if (treeToSet) {
-            setTree(treeToSet);
-        } else {
-            console.warn("[initTree] Tree initialization failed from all sources. Falling back to default tree.");
-            setTree(DEFAULT_TREE);
-        }
+        const treeWithNotes = await fetchNotes(tree);
+
+        setTree(treeWithNotes);
+        await Promise.all([
+            uiCache.setItem(TREE_CACHE_KEY, tree),
+            //noteCache.checkItems(tree.items),
+        ]);
         setInitLoaded(true);
-    }, [fetchNotes, fetchTree, toast, DEFAULT_TREE]);
+    }, [fetchNotes, fetchTree, toast]);
 
     const addItem = useCallback((item: NoteModel) => {
         const tree = TreeActions.addItem(treeRef.current, item.id, item.pid);
