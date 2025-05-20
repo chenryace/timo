@@ -181,11 +181,25 @@ const useNoteTree = (initData: TreeModel = DEFAULT_TREE) => {
     }, [fetchNotes, fetchTree, toast, DEFAULT_TREE]);
 
     const addItem = useCallback((item: NoteModel) => {
-        const tree = TreeActions.addItem(treeRef.current, item.id, item.pid);
-
-        tree.items[item.id].data = item;
-        setTree(tree);
-    }, []);
+        console.log('添加笔记到树结构', item);
+        // 确保父ID存在，如果不存在则使用ROOT_ID
+        const parentId = item.pid && treeRef.current.items[item.pid] ? item.pid : ROOT_ID;
+        
+        // 添加项目到树结构
+        let tree = TreeActions.addItem(treeRef.current, item.id, parentId);
+        
+        // 确保设置完整的节点属性
+        tree.items[item.id] = {
+            ...tree.items[item.id],
+            id: item.id,
+            data: item,
+            hasChildren: tree.items[item.id].children.length > 0,
+            isExpanded: false
+        };
+        
+        console.log('笔记已添加到树结构，依赖 addItem 更新', tree.items[item.id]);
+        setTree({...tree}); // 使用新对象触发重新渲染
+    }, []);}
 
     const removeItem = useCallback(async (id: string) => {
         const tree = TreeActions.removeItem(treeRef.current, id);

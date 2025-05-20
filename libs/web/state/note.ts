@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createContainer } from 'unstated-next';
 import NoteTreeState from 'libs/web/state/tree';
 import { NOTE_DELETED, NOTE_PINNED, NOTE_SHARED } from 'libs/shared/meta';
@@ -7,15 +7,22 @@ import noteCache from '../cache/note';
 import { NoteModel } from 'libs/shared/note';
 import { useToast } from '../hooks/use-toast';
 import { isEmpty, map } from 'lodash';
+import { uiCache } from '../cache';
 
 const useNote = (initData?: NoteModel) => {
     const [note, setNote] = useState<NoteModel | undefined>(initData);
     const { find, abort: abortFindNote } = useNoteAPI();
     const { create, error: createError } = useNoteAPI();
     const { mutate, loading, abort } = useNoteAPI();
-    const { addItem, removeItem, mutateItem, genNewId, initTree } =
+    const { addItem, removeItem, mutateItem, genNewId, initTree, tree } =
         NoteTreeState.useContainer();
+    const treeRef = useRef(tree);
     const toast = useToast();
+    
+    // 更新treeRef当树结构变化时
+    useEffect(() => {
+        treeRef.current = tree;
+    }, [tree]);
 
     const fetchNote = useCallback(
         async (id: string) => {
@@ -185,6 +192,14 @@ const useNote = (initData?: NoteModel) => {
                 addItem(result);
                 // 移除 await initTree() 调用，addItem 应该负责更新树
                 console.log('笔记已添加到树结构，依赖 addItem 更新');
+                
+                // 更新树结构缓存
+                const TREE_CACHE_KEY = 'tree';
+                const currentTree = treeRef.current;
+                if (currentTree && currentTree.items) {
+                    await uiCache.setItem(TREE_CACHE_KEY, currentTree);
+                    console.log('树结构缓存已更新');
+                }
                 
                 toast('创建笔记成功', 'success');
                 return result;
