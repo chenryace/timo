@@ -319,11 +319,6 @@ const useNote = (initData?: NoteModel) => {
                                 // setNote(originalNote);
                                 // return;
                             }
-                        } else if (key === 'date') {
-                            // 对 date 字段进行特殊处理，允许一定的误差，并以服务器返回的为准
-                            // 这里不再进行严格比较，因为服务器时间可能与客户端有微小差异
-                            // validApiResult.date 将在后续更新中被使用
-                            console.log(`日期字段 (${key}) 将使用服务器返回的值: ${validApiResult[key]}`);
                         } else if (updatedData[key] !== validApiResult[key]) {
                             console.error(`字段 ${key} 验证失败，服务器返回的值与预期不一致`);
                             console.error(`本地预期: ${updatedData[key]}, 服务器返回: ${validApiResult[key]}`);
