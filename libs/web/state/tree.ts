@@ -43,6 +43,10 @@ const useNoteTree = (initData: TreeModel = DEFAULT_TREE) => {
     const { fetch: fetchNote } = useNoteAPI();
     const treeRef = useRef(tree);
     const toast = useToast();
+    
+    const genNewId = useCallback(() => {
+        return genId();
+    }, []);
 
     useEffect(() => {
         treeRef.current = tree;
