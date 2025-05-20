@@ -30,6 +30,7 @@ export const Favorites: FC = () => {
     }, []);
 
     useEffect(() => {
+        console.log('收藏夹树结构更新', pinnedTree);
         const items = cloneDeep(pinnedTree.items);
 
         setTree((prev) => {
