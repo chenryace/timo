@@ -1,4 +1,4 @@
-import { cloneDeep, forEach, map, reduce } from 'lodash';
+import { cloneDeep, forEach, map, reduce, isEmpty } from 'lodash';
 import { genId } from 'libs/shared/id';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createContainer } from 'unstated-next';
@@ -242,17 +242,25 @@ const useNoteTree = (initData: TreeModel = DEFAULT_TREE) => {
     );
 
     const mutateItem = useCallback(
-        async (id: string, data: TreeItemMutation) => {
-            if (data.isFolder !== undefined || data.isExpanded !== undefined) {
+        async (id: string, data: Partial<TreeItemModel>) => {
+            // Optimistic update of local state
+            setTree(currentTree => TreeActions.mutateItem(currentTree, id, data));
+
+            // Prepare payload for API: create a copy and remove the 'data' property (NoteModel)
+            const apiDataPayload = { ...data };
+            delete apiDataPayload.data;
+
+            // @todo diff 没有变化就不发送请求
+            // Send API request only if there are other changes besides the NoteModel data
+            if (!isEmpty(apiDataPayload)) {
                 await mutate({
                     action: 'mutate',
                     data: {
-                        ...data,
+                        ...apiDataPayload,
                         id,
                     },
                 });
             }
-            setTree(currentTree => TreeActions.mutateItem(currentTree, id, data));
         },
         [mutate, setTree]
     );
