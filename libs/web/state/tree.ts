@@ -266,7 +266,7 @@ const useNoteTree = (initData: TreeModel = DEFAULT_TREE) => {
     );
 
     const restoreItem = useCallback(async (id: string, pid: string) => {
-        let itemsToUpdateInCache: TreeItem[] = [];
+        let itemsToUpdateInCache: TreeItemModel[] = [];
         setTree(currentTree => {
             const newTree = TreeActions.restoreItem(currentTree, id, pid);
             // Capture items from the newTree for cache update after state is set
