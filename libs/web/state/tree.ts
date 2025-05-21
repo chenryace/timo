@@ -199,7 +199,7 @@ const useNoteTree = (initData: TreeModel = DEFAULT_TREE) => {
         
         console.log('笔记已添加到树结构，依赖 addItem 更新', tree.items[item.id]);
         setTree({...tree}); // 使用新对象触发重新渲染
-    }, []);}
+    }, []);
 
     const removeItem = useCallback(async (id: string) => {
         const tree = TreeActions.removeItem(treeRef.current, id);
