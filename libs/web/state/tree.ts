@@ -199,7 +199,7 @@ const useNoteTree = (initData: TreeModel = DEFAULT_TREE) => {
         
         console.log('笔记已添加到树结构，依赖 addItem 更新', tree.items[item.id]);
         setTree({...tree}); // 使用新对象触发重新渲染
-    }, []);
+    }, []);}
 
     const removeItem = useCallback(async (id: string) => {
         const tree = TreeActions.removeItem(treeRef.current, id);
@@ -242,11 +242,8 @@ const useNoteTree = (initData: TreeModel = DEFAULT_TREE) => {
     );
 
     const mutateItem = useCallback(
-        async (id: string, data: Partial<TreeItemModel>) => {
-            setTree(TreeActions.mutateItem(treeRef.current, id, data));
-            delete data.data;
-            // @todo diff 没有变化就不发送请求
-            if (!isEmpty(data)) {
+        async (id: string, data: TreeItemMutation) => {
+            if (data.isFolder !== undefined || data.isExpanded !== undefined) {
                 await mutate({
                     action: 'mutate',
                     data: {
@@ -255,28 +252,36 @@ const useNoteTree = (initData: TreeModel = DEFAULT_TREE) => {
                     },
                 });
             }
+            setTree(currentTree => TreeActions.mutateItem(currentTree, id, data));
         },
-        [mutate]
+        [mutate, setTree]
     );
 
     const restoreItem = useCallback(async (id: string, pid: string) => {
-        const tree = TreeActions.restoreItem(treeRef.current, id, pid);
+        let itemsToUpdateInCache: TreeItem[] = [];
+        setTree(currentTree => {
+            const newTree = TreeActions.restoreItem(currentTree, id, pid);
+            // Capture items from the newTree for cache update after state is set
+            itemsToUpdateInCache = TreeActions.flattenTree(newTree, id);
+            return newTree;
+        });
 
-        setTree(tree);
+        // This Promise.all should ideally run after setTree has flushed and tree state is updated.
+        // For now, we assume itemsToUpdateInCache is correctly populated from the newTree structure.
         await Promise.all(
             map(
-                TreeActions.flattenTree(tree, id),
+                itemsToUpdateInCache, // Use the captured list
                 async (item) =>
                     await noteCache.mutateItem(item.id, {
                         deleted: NOTE_DELETED.NORMAL,
                     })
             )
         );
-    }, []);
+    }, [setTree, noteCache]); // Added setTree and noteCache to dependencies
 
-    const deleteItem = useCallback(async (id: string) => {
-        setTree(TreeActions.deleteItem(treeRef.current, id));
-    }, []);
+    const deleteItem = useCallback((id: string) => { // No longer async if only calling setTree
+        setTree(currentTree => TreeActions.deleteItem(currentTree, id));
+    }, [setTree]); // Added setTree to dependencies
 
     const getPaths = useCallback((note: NoteModel) => {
         const tree = treeRef.current;
