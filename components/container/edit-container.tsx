@@ -29,6 +29,7 @@ export const EditContainer = () => {
     const { query } = useRouter();
     const { mutate: mutateSettings } = useSettingsAPI();
     const toast = useToast();
+    const dailyNoteLoadLock = useRef(false);
 
     const loadNoteById = useCallback(
         async (currentId: string, currentIsNew: boolean, currentPid?: string) => {
@@ -40,21 +41,31 @@ export const EditContainer = () => {
             }
             // daily notes
             if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(currentId)) {
-                await findOrCreateNote(currentId, {
-                    id: currentId,
-                    title: currentId,
-                    content: '\n',
-                    pid: settings.daily_root_id,
-                });
+                if (dailyNoteLoadLock.current) {
+                    console.log(`Daily note ${currentId} is already being loaded. Skipping.`);
+                    return;
+                }
+                dailyNoteLoadLock.current = true;
+                try {
+                    await findOrCreateNote(currentId, {
+                        id: currentId,
+                        title: currentId,
+                        content: '\n',
+                        pid: settings.daily_root_id,
+                    });
+                } finally {
+                    dailyNoteLoadLock.current = false;
+                }
             } else if (currentId === 'new') {
                 const url = `/${genNewId()}?new` + (currentPid ? `&pid=${currentPid}` : '');
                 await router.replace(url, undefined, { shallow: true });
             } else if (currentId && !currentIsNew) { // ID 存在，且不是 new 模式
                 try {
                     const result = await fetchNote(currentId);
-                    if (!result) {
-                        await router.replace({ query: { ...query, id: currentId, new: 1 } });
-                        return;
+                    if (!result) { // Note not found or deleted
+                        toast('笔记未找到或已被删除', 'error');
+                        await router.push('/', undefined, { shallow: true });
+                        return; // Important to return after navigation
                     }
                 } catch (msg) {
                     const err = msg as Error;
