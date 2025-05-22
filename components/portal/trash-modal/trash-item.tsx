@@ -28,7 +28,8 @@ const TrashItem: FC<{
     }, [filterNotes, keyword, note, restoreNote]);
 
     const onClickDelete = useCallback(async () => {
-        await deleteNote(note.id);
+        // When deleting from trash, it's a hard delete
+        await deleteNote(note.id, true);
         await filterNotes(keyword);
     }, [deleteNote, note.id, filterNotes, keyword]);
 
