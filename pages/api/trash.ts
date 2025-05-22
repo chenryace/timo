@@ -6,6 +6,7 @@ import { getPathNoteById } from 'libs/server/note-path';
 import { NOTE_DELETED } from 'libs/shared/meta';
 import { ROOT_ID } from 'libs/shared/tree';
 import TreeActions from 'libs/shared/tree'; // Added import
+import { strCompress } from 'libs/shared/str';
 
 export default api()
     .use(useAuth)
@@ -16,12 +17,13 @@ export default api()
             data: {
                 id: string;
                 parentId?: string;
+                permanent?: boolean; // Added permanent flag
             };
         };
 
         switch (action) {
             case 'delete':
-                await deleteNote(req, data.id);
+                await deleteNote(req, data.id, data.permanent);
                 break;
 
             case 'restore':
@@ -35,24 +37,37 @@ export default api()
         res.status(204).end();
     });
 
-async function deleteNote(req: ApiRequest, id: string) {
+async function deleteNote(req: ApiRequest, id: string, permanent?: boolean) {
     const notePath = getPathNoteById(id);
-    const tree = await req.state.treeStore.get();
 
-    // Get all descendant notes
-    const descendants = TreeActions.flattenTree(tree, id);
-    const descendantIds = descendants.map(item => item.id);
+    if (permanent) {
+        // Hard delete - deep
+        const tree = await req.state.treeStore.get();
+        const descendants = TreeActions.flattenTree(tree, id); // Includes the note 'id' itself
+        
+        for (const item of descendants) {
+            const currentNotePath = getPathNoteById(item.id);
+            await req.state.store.deleteObject(currentNotePath); // Hard delete current note
+        }
+    } else {
+        // Soft delete
+        const noteData = await req.state.store.getObjectAndMeta(notePath);
+        const updatedMeta = noteData.meta ? { ...noteData.meta } : {};
+        const now = new Date().toISOString();
+        updatedMeta['deletedAt'] = strCompress(now); 
+        updatedMeta['date'] = strCompress(now);
 
-    // Delete all descendant notes from store
-    for (const descendantId of descendantIds) {
-        const descendantNotePath = getPathNoteById(descendantId);
-        await req.state.store.deleteObject(descendantNotePath);
+        await req.state.store.putObject(
+            notePath,
+            noteData.content || '',
+            {
+                meta: updatedMeta,
+                contentType: noteData.contentType || 'text/markdown',
+            }
+        );
     }
-
-    // Delete the main note
-    await req.state.store.deleteObject(notePath);
-    // This will also remove all descendants from the tree structure
-    await req.state.treeStore.deleteItem(id);
+    // Update the tree cache; this is called for both soft and hard delete
+    await req.state.treeStore.removeItem(id);
 }
 
 async function restoreNote(req: ApiRequest, id: string, parentId = ROOT_ID) {

@@ -52,11 +52,12 @@ function useTrash() {
     );
 
     const deleteNote = useCallback(
-        async (id: string) => {
+        async (id: string, permanent?: boolean) => {
             await mutate({
                 action: 'delete',
                 data: {
                     id,
+                    permanent,
                 },
             });
             await noteCache.removeItem(id);

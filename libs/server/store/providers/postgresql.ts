@@ -276,10 +276,10 @@ export class StorePostgreSQL extends StoreProvider {
                          DO UPDATE SET content_type = $2, cache_control = $3, content_disposition = $4, content_encoding = $5`,
                         [
                             fullPath,
-                            options.contentType,
-                            options.headers?.cacheControl,
-                            options.headers?.contentDisposition,
-                            options.headers?.contentEncoding
+                            options.contentType === undefined ? null : options.contentType,
+                            options.headers?.cacheControl === undefined ? null : options.headers.cacheControl,
+                            options.headers?.contentDisposition === undefined ? null : options.headers.contentDisposition,
+                            options.headers?.contentEncoding === undefined ? null : options.headers.contentEncoding
                         ]
                     );
                 }
@@ -373,10 +373,10 @@ export class StorePostgreSQL extends StoreProvider {
                          DO UPDATE SET content_type = $2, cache_control = $3, content_disposition = $4, content_encoding = $5`,
                         [
                             targetFullPath,
-                            options.contentType,
-                            options.headers?.cacheControl,
-                            options.headers?.contentDisposition,
-                            options.headers?.contentEncoding
+                            options.contentType === undefined ? null : options.contentType,
+                            options.headers?.cacheControl === undefined ? null : options.headers.cacheControl,
+                            options.headers?.contentDisposition === undefined ? null : options.headers.contentDisposition,
+                            options.headers?.contentEncoding === undefined ? null : options.headers.contentEncoding
                         ]
                     );
                 } else {
@@ -388,14 +388,20 @@ export class StorePostgreSQL extends StoreProvider {
                     ) as { rowCount: number, rows: any[] };
                     
                     if (headerResult.rowCount > 0) {
-                        const { content_type, cache_control, content_disposition, content_encoding } = headerResult.rows[0];
+                        let { content_type, cache_control, content_disposition, content_encoding } = headerResult.rows[0];
                     
                         await client.query(
                             `INSERT INTO object_headers (path, content_type, cache_control, content_disposition, content_encoding)
                              VALUES ($1, $2, $3, $4, $5)
                              ON CONFLICT (path) 
                              DO UPDATE SET content_type = $2, cache_control = $3, content_disposition = $4, content_encoding = $5`,
-                            [targetFullPath, content_type, cache_control, content_disposition, content_encoding]
+                            [
+                                targetFullPath, 
+                                content_type === undefined ? null : content_type,
+                                cache_control === undefined ? null : cache_control,
+                                content_disposition === undefined ? null : content_disposition,
+                                content_encoding === undefined ? null : content_encoding
+                            ]
                         );
                     }
                 }
