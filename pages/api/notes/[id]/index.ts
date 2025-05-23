@@ -8,6 +8,8 @@ import { StoreProvider } from 'libs/server/store';
 import { API } from 'libs/server/middlewares/error';
 import { strCompress } from 'libs/shared/str';
 import { ROOT_ID } from 'libs/shared/tree';
+import TreeActions from 'libs/shared/tree'; // TreeActions is still used for hard delete
+import { cascadeSoftDeleteNotes } from 'libs/server/note-actions'; // Added import
 
 export async function getNote(
     store: StoreProvider,
@@ -33,38 +35,33 @@ export default api()
     .use(useStore)
     .delete(async (req, res) => {
         const id = req.query.id as string;
-        const notePath = getPathNoteById(id);
+        // const notePath = getPathNoteById(id); // No longer solely needed here for soft delete meta
         const permanent = req.query.permanent === 'true';
 
-        const noteExists = await req.state.store.hasObject(notePath);
-
-        if (!noteExists) {
-            throw API.NOT_FOUND.throw(`Note with id ${id} not found`);
+        // Note existence check should ideally be part of cascadeSoftDeleteNotes or done before if preferred
+        // For now, let's assume cascadeSoftDeleteNotes handles non-existent main item gracefully or throws.
+        // Or, perform a check before calling it:
+        if (!(await req.state.store.hasObject(getPathNoteById(id)))) {
+             throw API.NOT_FOUND.throw(`Note with id ${id} not found`);
         }
 
         if (permanent) {
-            // Hard delete
-            await req.state.store.deleteObject(notePath);
-        } else {
-            // Soft delete
-            const noteData = await req.state.store.getObjectAndMeta(notePath);
-            const updatedMeta = noteData.meta ? { ...noteData.meta } : {};
-            const now = new Date().toISOString();
-            updatedMeta['deletedAt'] = strCompress(now);
-            // Also update the 'date' field to reflect this modification, similar to POST
-            updatedMeta['date'] = strCompress(now);
-
-            await req.state.store.putObject(
-                notePath,
-                noteData.content || '', // Keep original content
-                {
-                    meta: updatedMeta,
-                    contentType: noteData.contentType || 'text/markdown',
+            // Hard delete logic (remains as per step 1)
+            const tree = await req.state.treeStore.get(); // Still need tree for hard delete
+            const descendantsForHardDelete = TreeActions.flattenTree(tree, id);
+            for (const item of descendantsForHardDelete) {
+                const currentNotePath = getPathNoteById(item.id);
+                if (await req.state.store.hasObject(currentNotePath)) {
+                    await req.state.store.deleteObject(currentNotePath);
                 }
-            );
+            }
+            await req.state.treeStore.deleteItem(id);
+        } else {
+            // Soft delete - Use the new shared function
+            await cascadeSoftDeleteNotes(req.state.store, req.state.treeStore, id);
+            // Then, remove the original (root) item of this soft deletion from its parent in the tree
+            await req.state.treeStore.removeItem(id);
         }
-
-        await req.state.treeStore.removeItem(id);
 
         res.status(204).end();
     })

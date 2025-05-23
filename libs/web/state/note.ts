@@ -14,8 +14,8 @@ const useNote = (initData?: NoteModel) => {
     const { find, abort: abortFindNote } = useNoteAPI();
     const { create, error: createError } = useNoteAPI();
     const { mutate, loading, abort } = useNoteAPI();
-    const { addItem, removeItem, mutateItem, genNewId, initTree, tree } =
-        NoteTreeState.useContainer();
+    const { addItem, removeItem, mutateItem, genNewId, initTree, tree, deleteItem: deleteItemFromTree } =
+        NoteTreeState.useContainer(); // Ensure deleteItem is destructured
     const treeRef = useRef(tree);
     const toast = useToast();
     
@@ -429,34 +429,63 @@ const useNote = (initData?: NoteModel) => {
     const apiDeleteNote = useCallback(
         async (deletedNoteId: string) => {
             if (!deletedNoteId || deletedNoteId === 'undefined') {
-                console.warn(`handleHardDeleteCleanup: Invalid deletedNoteId "${deletedNoteId}" provided.`);
+                console.warn(`apiDeleteNote: Invalid deletedNoteId "${deletedNoteId}" provided.`);
                 return;
             }
-            console.log('handleHardDeleteCleanup triggered for note ID:', deletedNoteId);
+            console.log('apiDeleteNote triggered for note ID:', deletedNoteId);
 
-            // 1. 从本地笔记缓存中移除被删除的笔记条目
-            console.log('Removing note from local cache:', deletedNoteId);
-            await noteCache.removeItem(deletedNoteId);
-            // 开发者提示: 如果您的应用支持笔记的层级结构，并且硬删除父笔记意味着其所有子孙笔记也应被删除，
-            // 您可能需要在此处添加逻辑来递归地从缓存中移除所有相关的子孙笔记。
-            // 当前的 initTree() 调用会从服务器刷新整个树，这应该能处理子孙笔记在树结构中的移除，
-            // 但显式清理缓存可以确保数据一致性并避免潜在的孤立缓存条目。
+            try {
+                // 1. 从本地笔记缓存中移除被删除的笔记条目 (This part can remain)
+                console.log('Removing note from local cache:', deletedNoteId);
+                await noteCache.removeItem(deletedNoteId);
+                // Consider if child notes also need to be removed from cache here,
+                // or if relying on tree state and subsequent fetches is sufficient.
+                // TreeActions.deleteItem in NoteTreeState.deleteItem will handle the tree structure.
 
-            // 2. 调用API从服务器重新获取并更新整个树结构
-            console.log('Refreshing note tree from server...');
-            await initTree();
-            console.log('Note tree refreshed.');
+                // 2. Optimistically update the local tree state by removing the item and its descendants
+                console.log('Optimistically updating local tree state for note ID:', deletedNoteId);
+                deleteItemFromTree(deletedNoteId); // This should call TreeActions.deleteItem
 
-            // 3. 如果当前正在查看的笔记被硬删除了，UI需要相应地更新
-            if (note?.id === deletedNoteId) {
-                console.log('Currently viewed note was deleted. Clearing note view.');
-                setNote(undefined); // 清空笔记视图
-                toast('当前笔记已被永久删除', 'info'); // 通知用户
-                // 导航到默认页面或列表的逻辑通常在UI组件层完成，
-                // 例如，通过 useEffect 监听 `note` 状态的变化。
+                // 3. If the currently viewed note was the one deleted, clear the note view
+                if (note?.id === deletedNoteId) {
+                    console.log('Currently viewed note was deleted. Clearing note view.');
+                    setNote(undefined); 
+                    toast('当前笔记已被永久删除', 'info');
+                }
+                
+                // 4. (Optional but good for safety) Inform the user immediately
+                // toast('笔记已在本地移除，等待服务器确认...', 'info'); // Or similar message
+
+                // The actual API call to delete from server would have been made *before* calling apiDeleteNote.
+                // This function is more of a "post-hard-delete-API-call cleanup".
+                // If an error occurs during the API call, this function might not even be reached,
+                // or it could be called in a .then() chaining from the API call.
+
+                // If the design is that the API call is made from within this function, it would be:
+                // await someApi.hardDelete(deletedNoteId);
+                // If that's the case, the optimistic updates above are fine.
+
+                // Previous logic was:
+                // console.log('Refreshing note tree from server...');
+                // await initTree(); // This reloads the entire tree.
+                // console.log('Note tree refreshed.');
+
+                // New logic: The tree is already updated locally by deleteItemFromTree.
+                // We are relying on the server also having processed this correctly.
+                // A full initTree() might only be necessary if there's a suspected desync or error.
+
+                console.log('Local cache and tree state updated for hard deleted note:', deletedNoteId);
+
+            } catch (error) {
+                console.error('Error during apiDeleteNote cleanup for ID:', deletedNoteId, error);
+                toast('处理笔记删除后续操作时出错，建议刷新。', 'error');
+                // As a fallback in case of error during local cleanup,
+                // or if optimistic update is not desired to be permanent without server confirmation,
+                // a tree refresh could be forced here.
+                // await initTree(); 
             }
         },
-        [note, setNote, initTree, toast] 
+        [note, setNote, deleteItemFromTree, initTree, toast] // Added deleteItemFromTree and initTree
     );
 
     return {
